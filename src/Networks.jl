@@ -127,13 +127,6 @@ function distribute_discs_uniformly_2D(N::Int,L::Float64,rng::AbstractRNG; radiu
   return list_position
 end
 
-@inline function domain_of(position::Vector{Float64}, ld::Float64, nd::Int; offset::Float64=0.0)::Int
-  ix = 1 + floor(Int, (position[1]+offset)/ld)
-  iy = 1 + floor(Int, (position[2]+offset)/ld)
-  return (iy-1)*nd + ix
-end
-
-
 function apply_reflective_boundary_condition(pos::Vector{Float64}, phi::Float64, dim_min::Float64, dim_max::Float64)
   num_reflections = 0
   for d in 1:length(pos)
@@ -191,10 +184,12 @@ function system_2D_square(L::Float64, list_position_neuron::Vector{Vector{Float6
   ld = L/nd_box
   # real number of domains include boundary domains outside of box on each side
   nd = nd_box + 2
+  dims_domain = [ld,ld]
+  num_domains = [nd,nd]
   domains = LightGraphs.SimpleGraphs.grid([nd,nd], periodic=false) 
   domain_neurons = [Int[] for i=1:nv(domains)];
   for i in 1:length(list_position_neuron)
-    push!(domain_neurons[domain_of(list_position_neuron[i], ld, nd, offset=ld)], i)
+    push!(domain_neurons[domain_of(list_position_neuron[i], dims_domain, num_domains)], i)
   end
   function in_range(pos::Vector{Float64})
     for d in 1:length(pos)
@@ -207,7 +202,7 @@ function system_2D_square(L::Float64, list_position_neuron::Vector{Vector{Float6
     end
     return true
   end
-  system = BoxSystem([L,L], list_position_neuron, list_dendritic_radius, in_range, [ld,ld], [nd,nd], domains, domain_neurons)
+  system = BoxSystem([L,L], list_position_neuron, list_dendritic_radius, in_range, dims_domain, num_domains, domains, domain_neurons)
   return system
 end
 
@@ -215,7 +210,7 @@ function add_edges!(topology::SimpleDiGraph{Int64}, id::Int, list_pos_axon::Arra
   for i in 1:size(list_pos_axon,1)
     pos_axon = list_pos_axon[i,:]
     if system.in_range(pos_axon)
-      domain = domain_of(pos_axon, system)
+      domain = domain_of(pos_axon, system.dims_domain, system.num_domains)
       for d in [domain, outneighbors(system.domains,domain)...] 
         for j in system.domain_neurons[d]
           if intersect(pos_axon, system.list_position_neuron[j], system.list_dendritic_radius[j])
@@ -227,13 +222,14 @@ function add_edges!(topology::SimpleDiGraph{Int64}, id::Int, list_pos_axon::Arra
   end
 end
 
-@inline function domain_of(position::Vector{Float64}, system::BoxSystem)::Int
+#TODO: clarfify offset=0 in multidimensional case..?
+@inline function domain_of(position::Vector{Float64}, dims_domain::Vector{Float64}, num_domains::Vector{Int})::Int
   index = 1
   scaling_factor = 1
   for i in 1:length(position)
-    d_index_i = floor(Int, (position[i] + system.dims_domain[i])/system.dims_domain[i])
+    d_index_i = floor(Int, (position[i] + dims_domain[i])/dims_domain[i])
     index += d_index_i*scaling_factor
-    scaling_factor *= system.num_domains[i]
+    scaling_factor *= num_domains[i]
   end
   return index
 end
