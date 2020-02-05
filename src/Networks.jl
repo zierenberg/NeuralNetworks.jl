@@ -3,6 +3,7 @@ using LightGraphs
 using Random
 using Distributions
 using LinearAlgebra
+using HDF5
 
 """
     orlandi_topology()
@@ -21,12 +22,12 @@ Generate a network topology
 - sphi =  15.0/360*2*numpy.pi # [rad] Gaussian biased random walk
 - pc   =   0.5 # prob. of connectivity if axon crosses dendritic tree
 """
-#TODO: visualize
-function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150.0e-3, sd=20.0e-3, sa=900.0e-3, la=10.0e-3, sphi=15.0/360.0*2.0*pi, pc=0.5, verbose=false)
+function metric_correlations(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150.0e-3, sd=20.0e-3, sa=900.0e-3, la=10.0e-3, sphi=15.0/360.0*2.0*pi, pc=0.5, verbose=false, write_to="")
+
   rng = MersenneTwister(seed);
   
   N = Int(rho*L*L)
-  print("Generate Orlandi network topology with N=$(N) neurons on a $(L)x$(L) mm^2 square.\n... ")
+  print("Generate network topology with metric correlations inspired by [Orlandi et al., Nat. Phys., 2013] with N=$(N) neurons on a $(L)x$(L) mm^2 square.\n... ")
 
   list_dendritic_radius = rand(rng, Normal(Rd,sd),N);
   list_axonal_length    = rand(rng, Rayleigh(sa), N);
@@ -34,7 +35,7 @@ function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150
   if verbose
     print("Randomly place neurons in 2D space (can take long if density is too high).\n... ")
   end
-  list_position = distribute_discs_uniformly_2D(N, L, rng, radius=Rs)
+  list_position_neuron = distribute_discs_uniformly_2D(N, L, rng, radius=Rs)
 
   if verbose
     print("Create domain decomposition for quicker evaluation of axonal dentritic tree crossing.\n... ")
@@ -47,16 +48,19 @@ function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150
   domains = LightGraphs.SimpleGraphs.grid([nd,nd], periodic=false) 
   domain_neurons = [Int[] for i=1:nv(domains)];
   for i in 1:N
-    push!(domain_neurons[domain_of(list_position[i], ld, nd, offset=ld)], i)
+    push!(domain_neurons[domain_of(list_position_neuron[i], ld, nd, offset=ld)], i)
   end
 
   if verbose
     print("Axonal growth for each neuron that leads to potential connections if axon crosses another neurons' dendritic tree.\n... ")
   end
+  if write_to!=""
+    list_position_axon = [Vector{Float64}[] for i=1:N];
+  end
   @inline function check_connection!(topology::SimpleDiGraph{Int64}, pos_axon::Vector{Float64}, id::Int, domain::Int)
     for d in [domain, outneighbors(domains,domain)...] 
       for j in domain_neurons[d]
-        if intersect(pos_axon, list_position[j], list_dendritic_radius[j])
+        if intersect(pos_axon, list_position_neuron[j], list_dendritic_radius[j])
           add_edge!(topology, id, j)
         end
       end
@@ -70,6 +74,9 @@ function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150
       domain = domain_of(pos_axon, ld, nd, offset=ld)
       check_connection!(topology, pos_axon, id, domain)
     end
+    if write_to!=""
+      push!(list_position_axon[id], pos_axon)
+    end
     return pos_axon, phi
   end
 
@@ -79,7 +86,7 @@ function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150
     remainder = list_axonal_length[id] - num_seg*la
     #random initial direction at edge of soma (Rs)
     phi = rand(rng)*2*pi
-    pos_axon = list_position[id] + Rs*[cos(phi),sin(phi)]
+    pos_axon = list_position_neuron[id] + Rs*[cos(phi),sin(phi)]
     for i in 1:num_seg 
       pos_axon, phi = grow_axon(pos_axon, phi, id, la)
     end
@@ -102,8 +109,22 @@ function orlandi_topology(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150
     end
   end
 
+  if write_to!=""
+    f5 = h5open(write_to, "w")
+    group_position_neuron = f5["position_neuron"]
+    group_position_axon   = f5["position_axon"]
+    group_edges           = f5["graph_edges"]
+
+
+    write(group_position_neuron, "1", list_position_neuron[1])
+    #h5write(write_to, "position_axon", list_position_axon)
+    #h5write(write_to, "directed_edges", edges(topology))
+     
+    close(f5)
+  end
+
   println("done")
-  return topology, list_position
+  return topology
 end
 
 ###############################################################################
