@@ -1,4 +1,4 @@
-#module Networks
+module Topology
 using LightGraphs
 using Random
 using Distributions
@@ -6,7 +6,7 @@ using LinearAlgebra
 using HDF5
 
 """
-    orlandi_topology()
+    metric_correlations(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=150.0e-3, sd=20.0e-3, sa=900.0e-3, la=10.0e-3, sphi=15.0/360.0*2.0*pi, pc=0.5, verbose=false, write_to="")
 
 Generate a network topology 
 
@@ -75,10 +75,25 @@ function metric_correlations(L::Float64, rho::Float64, seed::Int; Rs=7.5e-3, Rd=
   end
 
   if write_to!=""
+    if verbose
+      print("Write to file $(write_to).\n... ")
+    end
     f5 = h5open(write_to, "w")
+    group_parameters      = g_create(f5,"parameters")
     group_position_neuron = g_create(f5,"position_neuron")
     group_position_axon   = g_create(f5,"position_axon")
     group_out_neighbors   = g_create(f5,"graph_out_neighbors")
+
+    group_parameters["N"]    = N
+    group_parameters["L"]    = L
+    group_parameters["rho"]  = rho
+    group_parameters["Rs"]   = Rs
+    group_parameters["Rd"]   = Rd
+    group_parameters["sd"]   = sd
+    group_parameters["sa"]   = sa
+    group_parameters["la"]   = la
+    group_parameters["sphi"] = sphi
+    group_parameters["pc"]   = pc
 
     for i in 1:N
       group_position_neuron["$(i)"]= list_position_neuron[i]
@@ -234,5 +249,5 @@ end
   return index
 end
 
-#end
-#export Networks
+end
+export Topology

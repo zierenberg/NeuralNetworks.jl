@@ -1,0 +1,4 @@
+name = "NeuralNetworks"
+uuid = "64fbe6be-78e1-45d4-9a52-90da268ec441"
+authors = ["Johannes <johannes.zierenberg@gmail.com>"]
+version = "0.1.0"
